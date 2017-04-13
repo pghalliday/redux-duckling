@@ -1,0 +1,61 @@
+{
+  "name": "redux-duckling",
+  "version": "0.0.0",
+  "description": "Composable ducklings",
+  "main": "lib/index.js",
+  "scripts": {
+    "cmd:lint": "eslint .",
+    "cmd:test": "cross-env NODE_ENV=test nyc mocha",
+    "cmd:coverage": "nyc report -r text && nyc check-coverage",
+    "cmd:build": "babel src --out-dir lib",
+    "cmd:coveralls": "cat ./coverage/lcov.info | coveralls",
+    "test": "run-s cmd:lint cmd:test cmd:coverage",
+    "build": "run-s test cmd:build",
+    "ci": "run-s build cmd:coveralls",
+    "alarmist:lint": "chokidar \"+(src|test)/**/*\" -c \"alarmist-npm cmd:lint\"",
+    "alarmist:test": "chokidar \"+(src|test)/**/*\" -c \"alarmist-npm cmd:test\"",
+    "alarmist:coverage": "chokidar \"coverage/lcov.info\" -c \"alarmist-npm cmd:coverage\"",
+    "alarmist:build": "chokidar \"src/**/*\" -c \"alarmist-npm cmd:build\"",
+    "start": "alarmist-monitor run-p alarmist:lint alarmist:test alarmist:coverage alarmist:build",
+    "watch": "chokidar '+(src|test)/**/*' -c 'npm run -s build'",
+    "prepublish": "run-s cmd:build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pghalliday/redux-duckling.git"
+  },
+  "keywords": [],
+  "author": "Peter Halliday <pghalliday@gmail.com> (http://pghalliday.com)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pghalliday/redux-duckling/issues"
+  },
+  "homepage": "https://github.com/pghalliday/redux-duckling#readme",
+  "peerDependencies": {
+    "redux": "^3.6.0",
+    "redux-actions": "^2.0.1"
+  },
+  "devDependencies": {
+    "alarmist": "^1.0.17",
+    "alarmist-npm": "^1.0.4",
+    "babel-cli": "^6.22.2",
+    "babel-plugin-istanbul": "^3.1.2",
+    "babel-plugin-transform-object-rest-spread": "^6.23.0",
+    "babel-preset-env": "^1.1.8",
+    "chai": "^3.5.0",
+    "chai-as-promised": "^6.0.0",
+    "chokidar-cli": "^1.2.0",
+    "coveralls": "^2.11.15",
+    "cross-env": "^3.1.4",
+    "eslint": "^3.14.1",
+    "eslint-config-google": "^0.7.1",
+    "mocha": "^3.2.0",
+    "npm-run-all": "^4.0.1",
+    "nyc": "^10.1.2",
+    "redux": "^3.6.0",
+    "redux-actions": "^2.0.1",
+    "redux-thunk": "^2.2.0",
+    "sinon": "^2.0.0",
+    "sinon-chai": "^2.8.0"
+  }
+}
