@@ -1,6 +1,6 @@
 {
   "name": "redux-duckling",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Composable ducklings",
   "main": "lib/index.js",
   "scripts": {
