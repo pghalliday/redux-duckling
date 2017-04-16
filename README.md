@@ -10,7 +10,7 @@ Composable ducklings
 
 After adopting the [redux duck](https://github.com/erikras/ducks-modular-redux) pattern to create more scalable and self-contained modules for our Redux application, we soon ran into an issue. We had a number of collections that although they were separated in the UI and as a result existed with separate states in the Redux store, they were essentially identical in implementation. All collections could be fetched and listed. All collections could be added to or have entries removed or updated. We had a standard pattern of actions to handle these cases and standard patterns for services that implemented the backend updates. There was a clear need to refactor into generic components that allowed our ducks to be organised hierarchically.
 
-In addition to this, to cleanly manage the state of asynchronous operations like fetching a list of entries or adding a new entry, we broke our ducks into even smaller/more focused chunks. We had a duck to fetch and provide lists and other ducks to manage the state of add, update and remove operations. This introduced a second issue. When an entry has been successfully added, the list also needs to be updated (and the add operation reset). This `FINALIZE_ADD` action needs to be shared/handled by both the list and add ducks and as such, needs to be defined further up the hierarchy.
+In addition to this, to cleanly manage the state of asynchronous operations like fetching a list of entries or adding a new entry, we broke our ducks into even smaller/more focused chunks. We had a duck to fetch and provide lists and other ducks to manage the state of create, update and remove operations. This introduced a second issue. When an entry has been successfully added, the list also needs to be updated (and the create operation reset). This `FINALIZE_CREATE` action needs to be shared/handled by both the list and create ducks and as such, needs to be defined further up the hierarchy.
 
 This `redux-duckling` library distills all that we learned and refactored to create a standard pattern that kept everything DRY, decoupled and functional.
 
@@ -33,14 +33,14 @@ A duckling is defined using a function that returns a descriptor containing the 
 
 The function takes 1 argument containing helper functions and properties that facilitate duckling reuse, etc.
 
-Let's look at how we might implement our collection example with asynchronous list, add, update and remove functions.
+Let's look at how we might implement our collection example with asynchronous list, create, update and remove functions.
 
 The flow we are going for will be something like this.
 
 - Initially fetch the list and display it or display an error where the list would have been
-- To add an entry, open a dialog
+- To create an entry, open a dialog
 - Submit the entry and somehow indicate pending
-  - on error display the error in the add dialog and allow the user to try again
+  - on error display the error in the create dialog and allow the user to try again
   - on success close the dialog and add the new entry to the list
 - To updated an entry, display a dialog
 - Submit the entry to be updated and somehow indicate pending
@@ -71,7 +71,7 @@ import {
 // and of course we are using `redux`
 import {
   createStore,
-  applyMiddleware
+  applyMiddleware,
 } from 'redux';
 
 // we have our own service to abstract the back end
@@ -102,7 +102,7 @@ const asyncBehavior = createDuckling(({action, selector}) => {
     (error) => typeof error !== 'undefined',
   );
   const getErrorText = createSelector(
-    hasError
+    hasError,
     error,
     (hasError, error) => hasError ? error.toString() : '',
   );
@@ -118,7 +118,7 @@ const asyncBehavior = createDuckling(({action, selector}) => {
   const handlers = {
     [start]: (state) => ({
       ...state,
-      pending: true
+      pending: true,
       error: undefined,
     }),
     [complete]: (state, {payload: error, error: hasError}) => hasError ? {
@@ -147,18 +147,16 @@ const asyncBehavior = createDuckling(({action, selector}) => {
 
 ### Composing ducklings
 
-Noting that `add`, `update` and `remove` operations all follow the same pattern, we can use the `createDuckling` method to then create a generic `operation` duckling that extends the `asyncBehavior`. The `createDuckling` method can take a variable number of arguments, these can be functions defining ducklings, ducklings already created, or maps of ducklings to child states. The `createDuckling` method populates the `app` helper property to provide access to the already resolved `app`. It also merges the `initialState` and sequences the reducers from left to right.
+We can use this `asyncBehavior` to create a `list` duckling. The `createDuckling` method can take a variable number of arguments, these can be functions defining ducklings, ducklings already created, or maps of ducklings to child states. The `createDuckling` method populates the `app` helper property to provide access to the already resolved `app`. It also merges the `initialState` and sequences the reducers from left to right.
 
 ```javascript
-const operation = createDuckling(
-  asyncBehavior, ({
-    app: {start, complete},
-    action,
-    selector,
-    namespace: [operation, collection]
-  }) => {
-  // The `app` helper will expose the app of ducklings
-  // that have been so far composed using the `composeDuckling`
+const list = createDuckling(asyncBehavior, ({
+  app: {start, complete},
+  selector,
+  namespace: [_, collection],
+}) => {
+  // The `app` helper will expose the exports of ducklings
+  // that have been so far composed using the `createDuckling`
   // method.
   // We use the `app` to access actions and selectors
   // defined in the shared `asyncBehavior` duckling
@@ -169,9 +167,78 @@ const operation = createDuckling(
   // absolute position in the state hierarchy, the array is
   // ordered in reverse so that the current leaf name is first,
   // the parent leaf name is second, etc.
-  // We use the `namespace` helper to determine which operation 
-  // and the collection we are operating on.
+  // We use the `namespace` helper to determine which collection
+  // we are listing
 
+  const initialState = {
+    entries: [],
+  };
+
+  const getEntries = selector((state) => state.entries);
+
+  const create = action('CREATE');
+  const remove = action('REMOVE');
+  const update = action('UPDATE');
+
+  const fetch = () => (dispatch) => {
+    dispatch(start());
+    return dispatch(complete(
+      service.list(collection),
+    ));
+  };
+
+  const handlers = {
+    [start]: (state) => ({
+      ...state,
+      entries: [],
+    }),
+    [complete]: (state, {payload: entries, error}) => error ? state : {
+      ...state,
+      entries,
+    },
+    [create]: (state, {payload: entry}) => ({
+      entries: [
+        ...state.entries,
+        entry,
+      ],
+    }),
+    [update]: (state, {payload: entry}) => ({
+      entries: state.entries.map(
+        (compare) => entry.id === compare.id ? entry : compare
+      ),
+    }),
+    [remove]: (state, {payload: entry}) => ({
+      entries: state.entries.filter((compare) => entry.id !== compare.id),
+    }),
+  };
+
+  // We will override the `asyncBehavior` 
+  // exports that should not be used externally.
+  // Effectively making them private.
+  return {
+    initialState,
+    handlers,
+    app: {
+      start: undefined,
+      complete: undefined,
+      fetch,
+      getEntries,
+      create,
+      update,
+      remove,
+    },
+  };
+});
+```
+
+Noting that `create`, `update` and `remove` operations all follow the same pattern, we can use the `createDuckling` method to then create a generic `operation` duckling that also extends the `asyncBehavior`.
+
+```javascript
+const operation = createDuckling(asyncBehavior, ({
+  app: {start, complete},
+  selector,
+  namespace: [operation, collection],
+}) => {
   const initialState = {
     complete: false,
   };
@@ -191,15 +258,12 @@ const operation = createDuckling(
       ...state,
       entry,
     }),
-    [complete]: (state, {payload: entry, error}) => error ? state : {
+    [complete]: (state, {error}) => error ? state : {
       ...state,
       complete: true,
     },
   };
 
-  // We will override the `asyncBehavior` 
-  // exports that should not be used externally.
-  // Effectively making them private.
   return {
     initialState,
     handlers,
@@ -222,43 +286,21 @@ In fact this does eventually combine the reducers with `redux.combineReducers` w
 
 For our example we have our `operation` functionality and can start combining it into a generic `collection` duckling. This will contain the operations and export the initial `fetch` and the finalize operation actions.
 
+**NB. it is not possible to merge other `handlers` or `initialState` with a combined duckling. If you attempt to do so an error will be thrown. This is because in most cases the states will conflict and although it would be possible to manage this, doing so quickly gets mind bendingly complicated. This is the reason that the `list` duckling is defined separately (you may think that it would naturally sit at the collection level)**
+
 ```javascript
-const collection = createDuckling(
-  asyncBehavior, {
-    add: operation,
-    update: operation,
-    remove: operation,
-  }, ({
-    app,
-    actions,
-    selector,
-    namespace: [collection]
-  ) => {
-  const {start, complete} = app;
-
-  const initialState = {
-    entries: [],
-  };
-
-  const getEntries = selector((state) => state.entries);
-
-  const finalizers = {
-    add: action('ADD'),
-    remove: action('REMOVE'),
-    update: action('UPDATE'),
-  };
-
-  const fetch = () => (dispatch) => {
-    dispatch(start());
-    return dispatch(complete(
-      service.list(collection),
-    ));
-  };
-
+const collection = createDuckling({
+  list,
+  create: operation,
+  update: operation,
+  remove: operation,
+}, ({
+  app,
+}) => {
   // this utility function and the use of reduce
   // below may be overkill but it is in keeping
   // with our desire to keep everything DRY
-  const capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1); 
+  const capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 
   // Here we can use the `app` parameter to access
   // the actions (and selectors) of our child ducklings.
@@ -266,54 +308,23 @@ const collection = createDuckling(
   // middleware to turn a single action into two (even
   // though they are not asynchronous).
   // Notice that here we are using a `reset` action that
-  // we didn't define. As a convenience, all ducklings will
-  // define a `reset` action and handle it in the reducer
-  // by returning the initial state. The `reset` action
-  // creator and handler can be overridden if desired
+  // we didn't define. As a convenience, ducklings will
+  // define a `reset` action and handle it
+  // by returning the initial state.
   const exports = [
-    'add',
+    'create',
     'update',
     'remove',
   ].reduce((operation, exports) => {
-    exports[`finalize${capitalize(operation)}`] = (entry) => (dispatch) {
+    exports[`finalize${capitalize(operation)}`] = (entry) => (dispatch) => {
       dispatch(app[operation].reset());
-      dispatch(finalizers[operation](entry));
+      dispatch(app.list[operation](entry));
     };
     return exports;
   }, {});
 
-  const handlers = {
-    [start]: (state) => ({
-      ...state,
-      entries: [],
-    }),
-    [complete]: (state, {payload: entries, error}) => error ? state : {
-      ...state,
-      entries,
-    },
-    [finalizers.add]: (state, {payload: entry}) => ({
-      entries: [
-        ...state.entries,
-        entry,
-      ],
-    }),
-    [finalizers.update]: (state, {payload: entry}) => ({
-      entries: state.entries.map((compare) => entry.id === compare.id ? entry : compare),
-    }),
-    [finalizers.remove]: (state, {payload: entry}) => ({
-      entries: state.entries.filter((compare) => entry.id !== compare.id),
-    }),
-  };
-
   return {
-    initialState,
-    handlers,
-    app: {
-      ...exports,
-      start: undefined,
-      complete: undefined,
-      getEntries,
-    },
+    app: exports,
   };
 });
 ```
@@ -345,22 +356,29 @@ const store = createStore(
 For our example the app will have the following structure.
 
 ```javascript
-app.fruits.fetch();
-app.fruits.isPending(state);
-app.fruits.hasError(state);
-app.fruits.getErrorText(state);
-app.fruits.getEntries(state);
-app.fruits.finalizeAdd(entry);
-app.fruits.finalizeUpdate(entry);
-app.fruits.finalizeRemove(entry);
+app.fruits.list.fetch();
+app.fruits.list.isPending(state);
+app.fruits.list.hasError(state);
+app.fruits.list.getErrorText(state);
+app.fruits.list.getEntries(state);
+app.fruits.list.reset();
+// These 3 actions are wrapped
+// by the finalize operation
+// convenience actions. They
+// don't change anything in the
+// backend and only update the list
+// in our store.
+app.fruits.list.create(entry);
+app.fruits.list.update(entry);
+app.fruits.list.remove(entry);
 
-app.fruits.add.submit(entry);
-app.fruits.add.isPending(state);
-app.fruits.add.hasError(state);
-app.fruits.add.getErrorText(state);
-app.fruits.add.isComplete(state);
-app.fruits.add.getEntry(state);
-app.fruits.add.reset();
+app.fruits.create.submit(entry);
+app.fruits.create.isPending(state);
+app.fruits.create.hasError(state);
+app.fruits.create.getErrorText(state);
+app.fruits.create.isComplete(state);
+app.fruits.create.getEntry(state);
+app.fruits.create.reset();
 
 app.fruits.update.submit(entry);
 app.fruits.update.isPending(state);
@@ -377,6 +395,10 @@ app.fruits.remove.getErrorText(state);
 app.fruits.remove.isComplete(state);
 app.fruits.remove.getEntry(state);
 app.fruits.remove.reset();
+
+app.fruits.finalizeCreate(entry);
+app.fruits.finalizeUpdate(entry);
+app.fruits.finalizeRemove(entry);
 
 // and the same for `app.vegetables`
 ```

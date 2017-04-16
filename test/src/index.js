@@ -74,53 +74,129 @@ const decrementerIncrementer = createDuckling(
   incrementer,
 );
 
-const complex = createDuckling(
-  decrementerIncrementer,
+const namespaced = createDuckling({
+  deep: {
+    path: ({action, selector, namespace}) => {
+      const initialState = {
+        test: '',
+      };
+      const getTest = selector((state) => state.test);
+      const test = action('TEST');
+      const setTest = () => (dispatch) => {
+        dispatch(test(namespace.join('.')));
+      };
+      const handlers = {
+        [test]: (state, {payload: test}) => ({
+          ...state,
+          test,
+        }),
+      };
+      return {
+        initialState,
+        handlers,
+        app: {
+          getTest,
+          setTest,
+        },
+      };
+    },
+  },
+});
+
+const mergedCombined = createDuckling(
+  multipleIncrementers, {
+    incrementer3: incrementer,
+    incrementer4: incrementer,
+  },
+);
+
+const container = createDuckling(
   multipleIncrementers,
-  ({action, selector, namespace, app}) => {
-    const initialState = {
-      test: '',
-    };
-    const getTest = selector((state) => state.test);
-    const test = action('TEST');
-    const combo = () => (dispatch) => {
-      dispatch(app.increment());
-      dispatch(app.decrement());
-      dispatch(app.incrementer1.increment());
-      dispatch(app.incrementer2.increment());
-      dispatch(test(namespace.join('.')));
-    };
-    const handlers = {
-      [test]: (state, {payload: test}) => ({
-        ...state,
-        test,
-      }),
+  ({app: {incrementer1, incrementer2}}) => {
+    const incrementAll = () => (dispatch) => {
+      dispatch(incrementer1.increment());
+      dispatch(incrementer2.increment());
     };
     return {
-      initialState,
-      handlers,
       app: {
-        getTest,
-        combo,
+        incrementAll,
       },
     };
   }
 );
 
-const deepComplex = createDuckling({
-  deep: {
-    path: complex,
+const initialState = createDuckling(() => ({
+  initialState: {
+    value: true,
   },
-});
+}));
+
+const handlers = createDuckling(() => ({
+  handlers: {
+    'ACTION': (state) => state,
+  },
+}));
+
+const errorMergeInitialStateWithCombined = createDuckling(
+  initialState,
+  multipleIncrementers,
+);
+
+const errorMergeCombinedWithInitialState = createDuckling(
+  multipleIncrementers,
+  initialState,
+);
+
+const errorMergeHandlersWithCombined = createDuckling(
+  handlers,
+  multipleIncrementers,
+);
+
+const errorMergeCombinedWithHandlers = createDuckling(
+  multipleIncrementers,
+  handlers,
+);
 
 let state;
 
 describe('redux-duckling', () => {
   describe('#resolveDuckling', () => {
-    it('should throw an error if given an invalid duckling', () => {
+    it('should error if given an invalid duckling', () => {
       expect(() => {
         resolveDuckling(0);
       }).to.throw('invalid duckling');
+    });
+
+    it('should error merging initialState with combined duckling', () => {
+      expect(() => {
+        resolveDuckling(errorMergeInitialStateWithCombined);
+      }).to.throw(
+        'Cannot merge a non empty `initialState` with combined duckling'
+      );
+    });
+
+    it('should error merging combined duckling with initial state', () => {
+      expect(() => {
+        resolveDuckling(errorMergeCombinedWithInitialState);
+      }).to.throw(
+        'Cannot merge combined duckling with a non empty `initialState`'
+      );
+    });
+
+    it('should error merging handlers with combined duckling', () => {
+      expect(() => {
+        resolveDuckling(errorMergeHandlersWithCombined);
+      }).to.throw(
+        'Cannot merge a non empty `handlers` with combined duckling'
+      );
+    });
+
+    it('should error merging combined duckling with handlers', () => {
+      expect(() => {
+        resolveDuckling(errorMergeCombinedWithHandlers);
+      }).to.throw(
+        'Cannot merge combined duckling with a non empty `handlers`'
+      );
     });
   });
 
@@ -151,8 +227,8 @@ describe('redux-duckling', () => {
     });
 
     describe('then the app', () => {
-      it('should be an empty object', () => {
-        app.should.eql({});
+      it('should just have a reset action', () => {
+        app.reset.should.be.ok;
       });
     });
   });
@@ -188,6 +264,27 @@ describe('redux-duckling', () => {
         describe('then the state', () => {
           it('should be 1', () => {
             app.getCountUp(state).should.eql(1);
+          });
+        });
+
+        describe('then reset', () => {
+          beforeEach(() => {
+            store.dispatch(app.reset());
+            state = store.getState();
+          });
+
+          describe('then the type of the action', () => {
+            it('should be `RESET`', () => {
+              store.dispatch.should.have.been.calledWithMatch({
+                type: 'RESET',
+              });
+            });
+          });
+
+          describe('then the state', () => {
+            it('should be 0', () => {
+              app.getCountUp(state).should.eql(0);
+            });
           });
         });
       });
@@ -227,6 +324,93 @@ describe('redux-duckling', () => {
           it('should be {incrementer1: 1, incrementer2: 0}', () => {
             app.incrementer1.getCountUp(state).should.eql(1);
             app.incrementer2.getCountUp(state).should.eql(0);
+          });
+        });
+
+        describe('then reset incrementer1', () => {
+          beforeEach(() => {
+            store.dispatch(app.incrementer1.reset());
+            state = store.getState();
+          });
+
+          describe('then the type of the action', () => {
+            it('should be `incrementer1/RESET`', () => {
+              store.dispatch.should.have.been.calledWithMatch({
+                type: 'incrementer1/RESET',
+              });
+            });
+          });
+
+          describe('then the state', () => {
+            it('should be {incrementer1: 0, incrementer2: 0}', () => {
+              app.incrementer1.getCountUp(state).should.eql(0);
+              app.incrementer2.getCountUp(state).should.eql(0);
+            });
+          });
+        });
+      });
+    });
+  });
+
+  describe('with a merged combined incrementers duckling', () => {
+    beforeEach(() => {
+      setupStore(mergedCombined);
+    });
+
+    describe('then the initial state', () => {
+      beforeEach(() => {
+        state = store.getState();
+      });
+
+      it('should be correct', () => {
+        app.incrementer1.getCountUp(state).should.eql(0);
+        app.incrementer2.getCountUp(state).should.eql(0);
+        app.incrementer3.getCountUp(state).should.eql(0);
+        app.incrementer4.getCountUp(state).should.eql(0);
+      });
+
+      describe('then increment incrementer1 and incrementer3', () => {
+        beforeEach(() => {
+          store.dispatch(app.incrementer1.increment());
+          store.dispatch(app.incrementer3.increment());
+          state = store.getState();
+        });
+
+        describe('then the type of the action', () => {
+          it('should be `incrementer1/INCREMENT`', () => {
+            store.dispatch.should.have.been.calledWithMatch({
+              type: 'incrementer1/INCREMENT',
+            });
+          });
+          it('should be `incrementer3/INCREMENT`', () => {
+            store.dispatch.should.have.been.calledWithMatch({
+              type: 'incrementer3/INCREMENT',
+            });
+          });
+        });
+
+        describe('then the state', () => {
+          it('should be correct', () => {
+            app.incrementer1.getCountUp(state).should.eql(1);
+            app.incrementer2.getCountUp(state).should.eql(0);
+            app.incrementer3.getCountUp(state).should.eql(1);
+            app.incrementer4.getCountUp(state).should.eql(0);
+          });
+        });
+
+        describe('then reset', () => {
+          beforeEach(() => {
+            store.dispatch(app.reset());
+            state = store.getState();
+          });
+
+          describe('then the state', () => {
+            it('should be correct', () => {
+              app.incrementer1.getCountUp(state).should.eql(0);
+              app.incrementer2.getCountUp(state).should.eql(0);
+              app.incrementer3.getCountUp(state).should.eql(0);
+              app.incrementer4.getCountUp(state).should.eql(0);
+            });
           });
         });
       });
@@ -289,14 +473,36 @@ describe('redux-duckling', () => {
               app.getCountDown(state).should.eql(-1);
             });
           });
+
+          describe('then reset', () => {
+            beforeEach(() => {
+              store.dispatch(app.reset());
+              state = store.getState();
+            });
+
+            describe('then the type of the action', () => {
+              it('should be `RESET`', () => {
+                store.dispatch.should.have.been.calledWithMatch({
+                  type: 'RESET',
+                });
+              });
+            });
+
+            describe('then the state', () => {
+              it('should be {countUp: 0, countDown: 0}', () => {
+                app.getCountUp(state).should.eql(0);
+                app.getCountDown(state).should.eql(0);
+              });
+            });
+          });
         });
       });
     });
   });
 
-  describe('with a nested complex duckling', () => {
+  describe('with a container duckling', () => {
     beforeEach(() => {
-      setupStore(deepComplex);
+      setupStore(container);
     });
 
     describe('then the initial state', () => {
@@ -304,26 +510,63 @@ describe('redux-duckling', () => {
         state = store.getState();
       });
 
-      it('should be correct', () => {
-        app.deep.path.getCountUp(state).should.eql(0);
-        app.deep.path.getCountDown(state).should.eql(0);
-        app.deep.path.incrementer1.getCountUp(state).should.eql(0);
-        app.deep.path.incrementer2.getCountUp(state).should.eql(0);
-        app.deep.path.getTest(state).should.eql('');
+      it('should be {incrementer1: 0, incrementer2: 0}', () => {
+        app.incrementer1.getCountUp(state).should.eql(0);
+        app.incrementer2.getCountUp(state).should.eql(0);
       });
 
-      describe('then dispatch the combo action', () => {
+      describe('then incrementAll', () => {
         beforeEach(() => {
-          store.dispatch(app.deep.path.combo());
+          store.dispatch(app.incrementAll());
           state = store.getState();
         });
 
         describe('then the state', () => {
-          it('should be correct', () => {
-            app.deep.path.getCountUp(state).should.eql(1);
-            app.deep.path.getCountDown(state).should.eql(-1);
-            app.deep.path.incrementer1.getCountUp(state).should.eql(1);
-            app.deep.path.incrementer2.getCountUp(state).should.eql(1);
+          it('should be {incrementer1: 1, incrementer2: 1}', () => {
+            app.incrementer1.getCountUp(state).should.eql(1);
+            app.incrementer2.getCountUp(state).should.eql(1);
+          });
+        });
+
+        describe('then reset', () => {
+          beforeEach(() => {
+            store.dispatch(app.reset());
+            state = store.getState();
+          });
+
+          describe('then the state', () => {
+            it('should be {incrementer1: 0, incrementer2: 0}', () => {
+              app.incrementer1.getCountUp(state).should.eql(0);
+              app.incrementer2.getCountUp(state).should.eql(0);
+            });
+          });
+        });
+      });
+    });
+  });
+
+  describe('with a namespaced duckling', () => {
+    beforeEach(() => {
+      setupStore(namespaced);
+    });
+
+    describe('then the initial state', () => {
+      beforeEach(() => {
+        state = store.getState();
+      });
+
+      it('should be \'\'', () => {
+        app.deep.path.getTest(state).should.eql('');
+      });
+
+      describe('then dispatch the setTest action', () => {
+        beforeEach(() => {
+          store.dispatch(app.deep.path.setTest());
+          state = store.getState();
+        });
+
+        describe('then the state', () => {
+          it('should be \'path.deep\'', () => {
             app.deep.path.getTest(state).should.eql('path.deep');
           });
         });
