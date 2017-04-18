@@ -42,20 +42,20 @@ function split(ducklings) {
   }, {maps: [], ducklings: []});
 }
 
-function namespaceType(namespace, type) {
-  if (namespace.length > 0) {
-    const [key, ...rest] = namespace;
-    return namespaceType(rest, `${key}/${type}`);
-  }
-  return type;
+function createActionHelper(namespace) {
+  const prefix = namespace.reduce((prefix, name) => `${name}/${prefix}`, '');
+  return (type, ...args) => createAction(`${prefix}${type}`, ...args);
 }
 
-function focusState(namespace, state) {
+function createSelectorHelper(namespace) {
   if (namespace.length > 0) {
-    const [key, ...rest] = namespace;
-    return focusState(rest, state)[key];
+    const selectors = namespace.map((name) => (state) => state[name]);
+    const selector = selectors.reduce(
+      (chain, selector) => (state) => chain(selector(state))
+    );
+    return (callback) => (state, ...args) => callback(selector(state), ...args);
   }
-  return state;
+  return (callback) => (...args) => callback(...args);
 }
 
 // add to the beginning of a chain of ducklings
@@ -211,14 +211,9 @@ function resolveDucklings(
 
 export default function resolve(all, namespace = []) {
   // create the action helper for this namespace
-  const action = ((type, ...args) => createAction(
-    namespaceType(namespace, type),
-    ...args
-  ));
+  const action = createActionHelper(namespace);
   // create the selector helper for this namespace
-  const selector = ((callback) => (state) => callback(
-    focusState(namespace, state)
-  ));
+  const selector = createSelectorHelper(namespace);
   // flatten the input to a single array of
   // maps and ducklings
   const flat = flatten(all);

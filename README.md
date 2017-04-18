@@ -64,7 +64,7 @@ function duckling({
   const initialState = {};
   const myAction = action('MY_ACTION');
   const mySelector = selector((state) => state.myField);
-  // Internally, the `handlers` object  and merged `initialState`
+  // Internally, the `handlers` object and merged `initialState`
   // will be used to generate a reducer using the `handleActions`
   // function from `redux-actions`
   const handlers = {
@@ -130,7 +130,7 @@ const {app, reducer} = resolve(duckling);
 // defaults to `[]`) and can be used to resolve a duckling that
 // will not be used at the root of a store.
 // Remember that the namespace is an array in reverse order with
-// the current leaf  name first. Also remember that it will be
+// the current leaf name first. Also remember that it will be
 // used to namespace and filter the actions and selectors (as such
 // it has to match the actual location in the state hierarchy).
 const {app, reducer} = resolve(duckling, ['path2', 'path1']);
