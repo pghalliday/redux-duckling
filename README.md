@@ -21,10 +21,7 @@ npm install --save redux redux-actions redux-duckling
 ```
 
 ```javascript
-import {
-  createDuckling,
-  resolveDuckling,
-} from 'redux-duckling';
+import resolve from 'redux-duckling';
 ```
 
 A duckling is a variation on the [redux duck](https://github.com/erikras/ducks-modular-redux) pattern. It encapsulates the same principles but steps away from the ES6 module as the basic unit of reuse. It also adds selectors into the pattern as a best practice to associate selectors with reducers.
@@ -80,7 +77,7 @@ import {
 // and `redux-promise` middlewares
 import * as service from '../../service';
 
-const asyncBehavior = createDuckling(({action, selector}) => {
+const asyncBehavior = ({action, selector}) => {
   // Set the initial state
   const initialState = {
     pending: false,
@@ -142,21 +139,21 @@ const asyncBehavior = createDuckling(({action, selector}) => {
       complete,
     },
   };
-});
+};
 ```
 
 ### Composing ducklings
 
-We can use this `asyncBehavior` to create a `list` duckling. The `createDuckling` method can take a variable number of arguments, these can be functions defining ducklings, ducklings already created, or maps of ducklings to child states. The `createDuckling` method populates the `app` helper property to provide access to the already resolved `app`. It also merges the `initialState` and sequences the reducers from left to right.
+We can use this `asyncBehavior` to create a `list` duckling. Ducklings can be composed by listing them in an array, the `resolve` method then populates the `app` helper property to provide access to the already resolved `app`. It also merges the `initialState` and sequences the reducers from left to right.
 
 ```javascript
-const list = createDuckling(asyncBehavior, ({
+const list = [asyncBehavior, ({
   app: {start, complete},
   selector,
   namespace: [_, collection],
 }) => {
   // The `app` helper will expose the exports of ducklings
-  // that have been so far composed using the `createDuckling`
+  // that have been so far composed using the `resolve`
   // method.
   // We use the `app` to access actions and selectors
   // defined in the shared `asyncBehavior` duckling
@@ -228,13 +225,13 @@ const list = createDuckling(asyncBehavior, ({
       remove,
     },
   };
-});
+}];
 ```
 
-Noting that `create`, `update` and `remove` operations all follow the same pattern, we can use the `createDuckling` method to then create a generic `operation` duckling that also extends the `asyncBehavior`.
+Noting that `create`, `update` and `remove` operations all follow the same pattern, we can also compose a generic `operation` duckling that also extends the `asyncBehavior`.
 
 ```javascript
-const operation = createDuckling(asyncBehavior, ({
+const operation = [asyncBehavior, ({
   app: {start, complete},
   selector,
   namespace: [operation, collection],
@@ -275,21 +272,21 @@ const operation = createDuckling(asyncBehavior, ({
       submit,
     },
   };
-});
+}];
 ```
 
 ### Combining ducklings
 
-Ducklings can be combined much like reducers, by assigning them to child paths of a parent state. The `createDuckling` method is used to do this.
+Ducklings can be combined much like reducers, by assigning them to child paths of a parent state using an object mapping.
 
 In fact this does eventually combine the reducers with `redux.combineReducers` when they are resolved. However, it also wraps the selectors so that they operate on the child state and sets the action types to namespace them according to the ducks standard.
 
-For our example we have our `operation` functionality and can start combining it into a generic `collection` duckling. This will contain the operations and export the initial `fetch` and the finalize operation actions.
+For our example we have our `operation` functionality and can start combining it into a generic `collection` duckling. This will contain `list`, the operations and the finalize operation actions.
 
 **NB. it is not possible to merge other `handlers` or `initialState` with a combined duckling. If you attempt to do so an error will be thrown. This is because in most cases the states will conflict and although it would be possible to manage this, doing so quickly gets mind bendingly complicated. This is the reason that the `list` duckling is defined separately (you may think that it would naturally sit at the collection level)**
 
 ```javascript
-const collection = createDuckling({
+const collection = [{
   list,
   create: operation,
   update: operation,
@@ -326,16 +323,16 @@ const collection = createDuckling({
   return {
     app: exports,
   };
-});
+}];
 ```
 
 And we're there! Now a number of collections can be defined in the state that share this set of behaviors
 
 ```javascript
-const duckling = createDuckling({
+const duckling = {
   fruits: collection,
   vegetables: collection,
-});
+};
 ```
 
 ### Resolving the reducer and app
@@ -343,7 +340,7 @@ const duckling = createDuckling({
 After combining and composing ducklings the reducer and app still need to be resolved before they can be used.
 
 ```javascript
-const {reducer, app} = resolveDuckling(duckling);
+const {reducer, app} = resolve(duckling);
 const store = createStore(
   reducer,
   applyMiddleware(

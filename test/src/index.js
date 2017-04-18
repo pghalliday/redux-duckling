@@ -1,7 +1,4 @@
-import {
-  createDuckling,
-  resolveDuckling,
-} from '../../src';
+import resolve from '../../src';
 import {
   createStore,
   applyMiddleware,
@@ -13,14 +10,14 @@ let reducer;
 let app;
 
 function setupStore(duckling) {
-  ({reducer, app} = resolveDuckling(duckling));
+  ({reducer, app} = resolve(duckling));
   store = createStore(reducer, applyMiddleware(thunk));
   sinon.spy(store, 'dispatch');
 };
 
-const identityDuckling = createDuckling(() => ({}));
+const identityDuckling = () => ({});
 
-const incrementer = createDuckling(({action, selector}) => {
+const incrementer = ({action, selector}) => {
   const initialState = {
     countUp: 0,
   };
@@ -40,9 +37,9 @@ const incrementer = createDuckling(({action, selector}) => {
       increment,
     },
   };
-});
+};
 
-const decrementer = createDuckling(({action, selector}) => {
+const decrementer = ({action, selector}) => {
   const initialState = {
     countDown: 0,
   };
@@ -62,19 +59,46 @@ const decrementer = createDuckling(({action, selector}) => {
       decrement,
     },
   };
-});
+};
 
-const multipleIncrementers = createDuckling({
+const toggle = ({action, selector}) => {
+  const initialState = {
+    toggle: false,
+  };
+  const getToggle = selector((state) => state.toggle);
+  const toggle = action('TOGGLE');
+  const handlers = {
+    [toggle]: (state) => ({
+      ...state,
+      toggle: !state.toggle,
+    }),
+  };
+  return {
+    initialState,
+    handlers,
+    app: {
+      getToggle,
+      toggle,
+    },
+  };
+};
+
+const multipleIncrementers = {
   incrementer1: incrementer,
   incrementer2: incrementer,
-});
+};
 
-const decrementerIncrementer = createDuckling(
+const decrementerIncrementer = [
   decrementer,
   incrementer,
-);
+];
 
-const namespaced = createDuckling({
+const decrementerIncrementerToggle = [
+  decrementerIncrementer,
+  toggle,
+];
+
+const namespaced = {
   deep: {
     path: ({action, selector, namespace}) => {
       const initialState = {
@@ -101,16 +125,16 @@ const namespaced = createDuckling({
       };
     },
   },
-});
+};
 
-const mergedCombined = createDuckling(
+const mergedCombined = [
   multipleIncrementers, {
     incrementer3: incrementer,
     incrementer4: incrementer,
   },
-);
+];
 
-const container = createDuckling(
+const container = [
   multipleIncrementers,
   ({app: {incrementer1, incrementer2}}) => {
     const incrementAll = () => (dispatch) => {
@@ -122,80 +146,80 @@ const container = createDuckling(
         incrementAll,
       },
     };
-  }
-);
+  },
+];
 
-const initialState = createDuckling(() => ({
+const initialState = () => ({
   initialState: {
     value: true,
   },
-}));
+});
 
-const handlers = createDuckling(() => ({
+const handlers = () => ({
   handlers: {
     'ACTION': (state) => state,
   },
-}));
+});
 
-const errorMergeInitialStateWithCombined = createDuckling(
+const errorMergeInitialStateWithCombined = [
   initialState,
   multipleIncrementers,
-);
+];
 
-const errorMergeCombinedWithInitialState = createDuckling(
+const errorMergeCombinedWithInitialState = [
   multipleIncrementers,
   initialState,
-);
+];
 
-const errorMergeHandlersWithCombined = createDuckling(
+const errorMergeHandlersWithCombined = [
   handlers,
   multipleIncrementers,
-);
+];
 
-const errorMergeCombinedWithHandlers = createDuckling(
+const errorMergeCombinedWithHandlers = [
   multipleIncrementers,
   handlers,
-);
+];
 
 let state;
 
 describe('redux-duckling', () => {
-  describe('#resolveDuckling', () => {
+  describe('#resolve', () => {
     it('should error if given an invalid duckling', () => {
       expect(() => {
-        resolveDuckling(0);
+        resolve(0);
       }).to.throw('invalid duckling');
     });
 
     it('should error merging initialState with combined duckling', () => {
       expect(() => {
-        resolveDuckling(errorMergeInitialStateWithCombined);
+        resolve(errorMergeInitialStateWithCombined);
       }).to.throw(
-        'Cannot merge a non empty `initialState` with combined duckling'
+        'Cannot merge a non empty `initialState` with duckling map'
       );
     });
 
     it('should error merging combined duckling with initial state', () => {
       expect(() => {
-        resolveDuckling(errorMergeCombinedWithInitialState);
+        resolve(errorMergeCombinedWithInitialState);
       }).to.throw(
-        'Cannot merge combined duckling with a non empty `initialState`'
+        'Cannot merge a non empty `initialState` with duckling map'
       );
     });
 
     it('should error merging handlers with combined duckling', () => {
       expect(() => {
-        resolveDuckling(errorMergeHandlersWithCombined);
+        resolve(errorMergeHandlersWithCombined);
       }).to.throw(
-        'Cannot merge a non empty `handlers` with combined duckling'
+        'Cannot merge non empty `handlers` with duckling map'
       );
     });
 
     it('should error merging combined duckling with handlers', () => {
       expect(() => {
-        resolveDuckling(errorMergeCombinedWithHandlers);
+        resolve(errorMergeCombinedWithHandlers);
       }).to.throw(
-        'Cannot merge combined duckling with a non empty `handlers`'
+        'Cannot merge non empty `handlers` with duckling map'
       );
     });
   });
@@ -492,6 +516,117 @@ describe('redux-duckling', () => {
               it('should be {countUp: 0, countDown: 0}', () => {
                 app.getCountUp(state).should.eql(0);
                 app.getCountDown(state).should.eql(0);
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+
+
+  describe('with a deeply composed duckling', () => {
+    beforeEach(() => {
+      setupStore(decrementerIncrementerToggle);
+    });
+
+    describe('then the initial state', () => {
+      beforeEach(() => {
+        state = store.getState();
+      });
+
+      it('should be {countUp: 0, countDown: 0, toggle: false}', () => {
+        app.getCountUp(state).should.eql(0);
+        app.getCountDown(state).should.eql(0);
+        app.getToggle(state).should.be.false;
+      });
+
+      describe('then increment', () => {
+        beforeEach(() => {
+          store.dispatch(app.increment());
+          state = store.getState();
+        });
+
+        describe('then the type of the action', () => {
+          it('should be `INCREMENT`', () => {
+            store.dispatch.should.have.been.calledWithMatch({
+              type: 'INCREMENT',
+            });
+          });
+        });
+
+        describe('then the state', () => {
+          it('should be {countUp: 1, countDown: 0, toggle: false}', () => {
+            app.getCountUp(state).should.eql(1);
+            app.getCountDown(state).should.eql(0);
+            app.getToggle(state).should.be.false;
+          });
+        });
+
+        describe('then decrement', () => {
+          beforeEach(() => {
+            store.dispatch(app.decrement());
+            state = store.getState();
+          });
+
+          describe('then the type of the action', () => {
+            it('should be `DECREMENT`', () => {
+              store.dispatch.should.have.been.calledWithMatch({
+                type: 'DECREMENT',
+              });
+            });
+          });
+
+          describe('then the state', () => {
+            it('should be {countUp: 1, countDown: -1, toggle: false}', () => {
+              app.getCountUp(state).should.eql(1);
+              app.getCountDown(state).should.eql(-1);
+              app.getToggle(state).should.be.false;
+            });
+          });
+
+          describe('then toggle', () => {
+            beforeEach(() => {
+              store.dispatch(app.toggle());
+              state = store.getState();
+            });
+
+            describe('then the type of the action', () => {
+              it('should be `TOGGLE`', () => {
+                store.dispatch.should.have.been.calledWithMatch({
+                  type: 'TOGGLE',
+                });
+              });
+            });
+
+            describe('then the state', () => {
+              it('should be {countUp: 1, countDown: -1: toggle: true}', () => {
+                app.getCountUp(state).should.eql(1);
+                app.getCountDown(state).should.eql(-1);
+                app.getToggle(state).should.be.true;
+              });
+            });
+
+            describe('then reset', () => {
+              beforeEach(() => {
+                store.dispatch(app.reset());
+                state = store.getState();
+              });
+
+              describe('then the type of the action', () => {
+                it('should be `RESET`', () => {
+                  store.dispatch.should.have.been.calledWithMatch({
+                    type: 'RESET',
+                  });
+                });
+              });
+
+              describe('then the state', () => {
+                it('should be the initial state', () => {
+                  app.getCountUp(state).should.eql(0);
+                  app.getCountDown(state).should.eql(0);
+                  app.getToggle(state).should.be.false;
+                });
               });
             });
           });
