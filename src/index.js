@@ -202,7 +202,10 @@ function resolveDucklings(
   const reducer = (
     state,
     action,
-  ) => reducers.reduce((state, reducer) => reducer(state, action), state);
+  ) => reducers.reduce((state, reducer) => ({
+    ...state,
+    ...reducer(state, action),
+  }), state);
   return {
     app,
     reducer,

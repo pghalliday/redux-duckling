@@ -25,7 +25,6 @@ const incrementer = ({action, selector}) => {
   const increment = action('INCREMENT');
   const handlers = {
     [increment]: (state) => ({
-      ...state,
       countUp: state.countUp + 1,
     }),
   };
@@ -47,7 +46,6 @@ const decrementer = ({action, selector}) => {
   const decrement = action('DECREMENT');
   const handlers = {
     [decrement]: (state) => ({
-      ...state,
       countDown: state.countDown - 1,
     }),
   };
@@ -69,7 +67,6 @@ const toggle = ({action, selector}) => {
   const toggle = action('TOGGLE');
   const handlers = {
     [toggle]: (state) => ({
-      ...state,
       toggle: !state.toggle,
     }),
   };
@@ -111,7 +108,6 @@ const namespaced = {
       };
       const handlers = {
         [test]: (state, {payload: test}) => ({
-          ...state,
           test,
         }),
       };

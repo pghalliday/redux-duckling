@@ -61,15 +61,21 @@ function duckling({
   // ducklings if there are any
   children,
 }) {
-  const initialState = {};
+  const initialState = {
+    myField: undefined,
+  };
   const myAction = action('MY_ACTION');
   const mySelector = selector((state) => state.myField);
-  // Internally, the `handlers` object and merged `initialState`
+  // Internally, the `handlers` object  and merged `initialState`
   // will be used to generate a reducer using the `handleActions`
   // function from `redux-actions`
+  // Note that as we don't know what other handlers in the chain
+  // might be doing, the return from these handlers will always 
+  // be merged with the current state. This means that if you want
+  // to remove any field from the state it is not enough to simply
+  // omit it. It must be explicitly set to undefined.
   const handlers = {
     [myAction]: (state, action) => ({
-      ...state,
       myField: action.payload,
     }),
   };
@@ -188,6 +194,7 @@ import * as service from '../../service';
 const asyncBehavior = ({action, selector}) => {
   const initialState = {
     pending: false,
+    error: undefined,
   };
 
   const error = selector((state) => state.error);
@@ -213,16 +220,13 @@ const asyncBehavior = ({action, selector}) => {
 
   const handlers = {
     [start]: (state) => ({
-      ...state,
       pending: true,
       error: undefined,
     }),
     [complete]: (state, {payload: error, error: hasError}) => hasError ? {
-      ...state,
       pending: false,
       error,
     } : {
-      ...state,
       pending: false,
     },
   };
@@ -270,11 +274,9 @@ const list = [asyncBehavior, ({
 
   const handlers = {
     [start]: (state) => ({
-      ...state,
       entries: [],
     }),
     [complete]: (state, {payload: entries, error}) => error ? state : {
-      ...state,
       entries,
     },
     [create]: (state, {payload: entry}) => ({
@@ -322,6 +324,7 @@ const operation = [asyncBehavior, ({
 }) => {
   const initialState = {
     complete: false,
+    entry: undefined,
   };
 
   const getEntry = selector((state) => state.entry);
@@ -336,11 +339,9 @@ const operation = [asyncBehavior, ({
 
   const handlers = {
     [start]: (state, {payload: entry}) => ({
-      ...state,
       entry,
     }),
     [complete]: (state, {error}) => error ? state : {
-      ...state,
       complete: true,
     },
   };
