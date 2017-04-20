@@ -1,9 +1,7 @@
 import resolve from '../../src';
 import {
   createStore,
-  applyMiddleware,
 } from 'redux';
-import thunk from 'redux-thunk';
 
 let store;
 let reducer;
@@ -11,7 +9,7 @@ let app;
 
 function setupStore(duckling) {
   ({reducer, app} = resolve(duckling));
-  store = createStore(reducer, applyMiddleware(thunk));
+  store = createStore(reducer);
   sinon.spy(store, 'dispatch');
 };
 
@@ -102,12 +100,9 @@ const namespaced = {
         test: '',
       };
       const getTest = selector((state) => state.test);
-      const test = action('TEST');
-      const setTest = () => (dispatch) => {
-        dispatch(test(namespace.join('.')));
-      };
+      const setTest = action('TEST', () => namespace.join('.'));
       const handlers = {
-        [test]: (state, {payload: test}) => ({
+        [setTest]: (state, {payload: test}) => ({
           test,
         }),
       };
@@ -132,49 +127,28 @@ const mergedCombined = [
 
 const container = [
   multipleIncrementers,
-  ({app: {incrementer1, incrementer2}}) => {
-    const incrementAll = () => (dispatch) => {
-      dispatch(incrementer1.increment());
-      dispatch(incrementer2.increment());
-    };
+  ({
+    action,
+    reduce,
+  }) => {
+    const incrementAll = action('INCREMENT_ALL');
     return {
       app: {
         incrementAll,
+      },
+      handlers: {
+        [incrementAll]: (state) => reduce(state, [
+          ['incrementer1', 'increment'],
+          ['incrementer2', 'increment'],
+        ]),
       },
     };
   },
 ];
 
-const initialState = () => ({
-  initialState: {
-    value: true,
-  },
-});
-
-const handlers = () => ({
-  handlers: {
-    'ACTION': (state) => state,
-  },
-});
-
-const errorMergeInitialStateWithCombined = [
-  initialState,
+const mergeAndMap = [
+  incrementer,
   multipleIncrementers,
-];
-
-const errorMergeCombinedWithInitialState = [
-  multipleIncrementers,
-  initialState,
-];
-
-const errorMergeHandlersWithCombined = [
-  handlers,
-  multipleIncrementers,
-];
-
-const errorMergeCombinedWithHandlers = [
-  multipleIncrementers,
-  handlers,
 ];
 
 let state;
@@ -185,38 +159,6 @@ describe('redux-duckling', () => {
       expect(() => {
         resolve(0);
       }).to.throw('invalid duckling');
-    });
-
-    it('should error merging initialState with combined duckling', () => {
-      expect(() => {
-        resolve(errorMergeInitialStateWithCombined);
-      }).to.throw(
-        'Cannot merge a non empty `initialState` with duckling map'
-      );
-    });
-
-    it('should error merging combined duckling with initial state', () => {
-      expect(() => {
-        resolve(errorMergeCombinedWithInitialState);
-      }).to.throw(
-        'Cannot merge a non empty `initialState` with duckling map'
-      );
-    });
-
-    it('should error merging handlers with combined duckling', () => {
-      expect(() => {
-        resolve(errorMergeHandlersWithCombined);
-      }).to.throw(
-        'Cannot merge non empty `handlers` with duckling map'
-      );
-    });
-
-    it('should error merging combined duckling with handlers', () => {
-      expect(() => {
-        resolve(errorMergeCombinedWithHandlers);
-      }).to.throw(
-        'Cannot merge non empty `handlers` with duckling map'
-      );
     });
   });
 
@@ -699,6 +641,55 @@ describe('redux-duckling', () => {
         describe('then the state', () => {
           it('should be \'path.deep\'', () => {
             app.deep.path.getTest(state).should.eql('path.deep');
+          });
+        });
+      });
+    });
+  });
+
+  describe('with a map composed with a duckling', () => {
+    beforeEach(() => {
+      setupStore(mergeAndMap);
+    });
+
+    describe('then the initial state', () => {
+      beforeEach(() => {
+        state = store.getState();
+      });
+
+      it('should be correct', () => {
+        app.getCountUp(state).should.eql(0);
+        app.incrementer1.getCountUp(state).should.eql(0);
+        app.incrementer2.getCountUp(state).should.eql(0);
+      });
+
+      describe('then dispatch some increment actions', () => {
+        beforeEach(() => {
+          store.dispatch(app.increment());
+          store.dispatch(app.incrementer1.increment());
+          state = store.getState();
+        });
+
+        describe('then the state', () => {
+          it('should be correct', () => {
+            app.getCountUp(state).should.eql(1);
+            app.incrementer1.getCountUp(state).should.eql(1);
+            app.incrementer2.getCountUp(state).should.eql(0);
+          });
+        });
+
+        describe('then reset', () => {
+          beforeEach(() => {
+            store.dispatch(app.reset());
+            state = store.getState();
+          });
+
+          describe('then the state', () => {
+            it('should be correct', () => {
+              app.getCountUp(state).should.eql(0);
+              app.incrementer1.getCountUp(state).should.eql(0);
+              app.incrementer2.getCountUp(state).should.eql(0);
+            });
           });
         });
       });

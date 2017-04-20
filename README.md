@@ -47,14 +47,25 @@ function duckling({
   // create selectors so that they operate on the
   // correct child state
   selector,
+  // The `reduce` helper function can be used to apply
+  // actions to child ducklings without dispatching them.
+  // It takes the state and an array of actions to apply
+  // and returns a new state
+  reduce,
   // The `app` object provides access to actions and selectors
   // defined in the ducklings that this duckling extends.
   // At the very least this will contain a `reset` action
   // as all ducklings will resolve with a `reset` action
   // that restores the initial state.
   app,
-  // The `children` array lists the names of the child
-  // ducklings if there are any
+  // The `children` helper is a map of the child reducers. This
+  // can be useful if you want to resolve actions on children
+  // without dispatching actions and notifying changes until
+  // all the changes have been applied. The `reset` action
+  // handler uses this collection internally for exactly this
+  // purpose.
+  // However, it will usually make more sense to use the
+  // `reduce` helper which shortcuts the most common use case.
   children,
   // The `namespace` array defines the current namespace.
   // The current leaf name will be first, the parent second,
@@ -100,7 +111,14 @@ Compose ducklings...
 ```javascript
 // The following ducklings will be merged by
 // merging their `initialState` and `app` objects
-// and chaining their reducers from left to right
+// and chaining their reducers.
+// When merging an array of ducklings, first the array
+// will be flattened and then all the duckling maps will
+// be extracted in order and merged first from left to
+// right. Only then will the remaining duckling functions
+// be merged, also from left to right.
+//
+// NB. duckling maps always get merged first!
 const duckling = [
   duckling1,
   duckling2,
@@ -111,7 +129,7 @@ const duckling = [
 Combine ducklings...
 
 ```javascript
-// The following ducklings will be combined
+// The following duckling map will be combined
 // so that the resulting duckling will have
 // correspondingly named child ducklings.
 // The resulting actions and selectors will
@@ -349,8 +367,6 @@ In fact this does eventually combine the reducers with `redux.combineReducers` w
 
 For our example we have our `operation` functionality and can start combining it into a generic `collection` duckling. This will contain the `list`, the operations and the finalize operation actions.
 
-**NB. it is not possible to merge other `handlers` or `initialState` with a combined duckling. If you attempt to do so an error will be thrown. This is because in most cases the states will conflict and although it might be possible to manage this, doing so quickly gets mind bogglingly complicated. This is the reason that the `list` duckling is defined separately (you may think that it would naturally sit at the collection level)**
-
 ```javascript
 //
 // ./lib/collection/index.js
@@ -369,23 +385,37 @@ export default function(service) {
     update: operationFactory(service.update),
     remove: operationFactory(service.remove),
   }, ({
-    app: {list, create, update, remove},
-  }) => ({
-    app: {
-      finalizeCreate: (entry) => (dispatch) => {
-        dispatch(create.reset());
-        dispatch(list.create(entry));
+    action,
+    // We will use the `reduce` helper
+    // to update our child states but only
+    // notify a single change
+    reduce,
+  }) => {
+    const finalizeCreate = action('FINALIZE_CREATE');
+    const finalizeUpdate = action('FINALIZE_UPDATE');
+    const finalizeRemove = action('FINALIZE_REMOVE');
+    return {
+      handlers: {
+        [finalizeCreate]: (state, {payload: entry}) => reduce(state, [
+          ['create', 'reset'],
+          ['list', 'create', entry],
+        ]),
+        [finalizeUpdate]: (state, {payload: entry}) => reduce(state, [
+          ['update', 'reset'],
+          ['list', 'update', entry],
+        ]),
+        [finalizeRemove]: (state, {payload: entry}) => reduce(state, [
+          ['remove', 'reset'],
+          ['list', 'remove', entry],
+        ]),
       },
-      finalizeUpdate: (entry) => (dispatch) => {
-        dispatch(update.reset());
-        dispatch(list.update(entry));
+      app: {
+        finalizeCreate,
+        finalizeUpdate,
+        finalizeRemove,
       },
-      finalizeRemove: (entry) => (dispatch) => {
-        dispatch(remove.reset());
-        dispatch(list.remove(entry));
-      },
-    },
-  })];
+    };
+  }];
 }
 ```
 
