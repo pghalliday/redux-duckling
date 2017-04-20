@@ -58,23 +58,6 @@ function duckling({
   // as all ducklings will resolve with a `reset` action
   // that restores the initial state.
   app,
-  // The `children` helper is a map of the child reducers. This
-  // can be useful if you want to resolve actions on children
-  // without dispatching actions and notifying changes until
-  // all the changes have been applied. The `reset` action
-  // handler uses this collection internally for exactly this
-  // purpose.
-  // However, it will usually make more sense to use the
-  // `reduce` helper which shortcuts the most common use case.
-  children,
-  // The `namespace` array defines the current namespace.
-  // The current leaf name will be first, the parent second,
-  // etc.
-  // Use with care. Defining duckling factories (functions
-  // that return ducklings) would be preferable to using
-  // the namespace to couple funcionality to a location in the
-  // hierarchy.
-  namespace,
 }) {
   const myAction = action('MY_ACTION');
   const mySelector = selector((state) => state.myField);
@@ -135,9 +118,6 @@ Combine ducklings...
 // The resulting actions and selectors will
 // be correctly namespaced according to the
 // hierarchy.
-// Internally the reducer will be resolved
-// using the `combineReducers` function from
-// `redux`.
 const duckling = {
   duckling1,
   duckling2,
@@ -226,11 +206,17 @@ export default function({action, selector}) {
         pending: true,
         error: undefined,
       }),
-      [complete]: (_, {payload: error, error: hasError}) => hasError ? {
-        pending: false,
-        error,
-      } : {
-        pending: false,
+      // We use the `next/throw` feature from
+      // `redux-actions` to distinguish success
+      // and error cases
+      [complete]: {
+        next: () => ({
+          pending: false,
+        }),
+        throw: (_ {payload: error}) => ({
+          pending: false,
+          error,
+        }),
       },
     },
     app: {
@@ -246,76 +232,7 @@ export default function({action, selector}) {
 
 ### Composing ducklings
 
-We can use this `asyncBehavior` to create a `list` duckling. Ducklings can be composed by listing them in an array, the `resolve` method then populates the `app` helper property to provide access to the already resolved `app`. It also merges the `initialState` and sequences the reducers from left to right.
-
-```javascript
-//
-// ./lib/collection/list.js
-//
-
-import asyncBehavior from '../async-behavior';
-
-// Here we will use a factory method to
-// generate new duckling definitions. The `service`
-// that is passed in will determine which collection
-// we are listing
-export default function(service) {
-  return [asyncBehavior, ({
-    action,
-    selector,
-    app: {start, complete},
-  }) => {
-    const create = action('CREATE');
-    const update = action('UPDATE');
-    const remove = action('REMOVE');
-    return {
-      initialState: {
-        entries: [],
-      },
-      handlers: {
-        [start]: () => ({
-          entries: [],
-        }),
-        [complete]: (_, {payload: entries, error}) => error ? {} : {
-          entries,
-        },
-        [create]: (state, {payload: entry}) => ({
-          entries: [
-            ...state.entries,
-            entry,
-          ],
-        }),
-        [update]: (state, {payload: entry}) => ({
-          entries: state.entries.map(
-            (original) => entry.key === original.key ? entry : original,
-          ),
-        }),
-        [remove]: (state, {payload: key}) => ({
-          entries: state.entries.filter((entry) => entry.key !== key),
-        }),
-      },
-      app: {
-        getEntries: selector((state) => state.entries),
-        // Use the `redux-thunk` middleware for the
-        // asynchronous `fetch` action
-        fetch: () => (dispatch) => {
-          dispatch(start());
-          // We expect the passed in `service` to implement
-          // a `fetch` method that returns a promise. This
-          // promise can then be handled by the `redux-promise`
-          // middleware
-          return dispatch(complete(service.fetch()));
-        },
-        create,
-        update,
-        remove,
-      },
-    };
-  }];
-}
-```
-
-Noting that `create`, `update` and `remove` operations all follow the same pattern, we can compose a generic `operation` duckling that also extends the `asyncBehavior`.
+Noting that `create`, `update` and `remove` operations all follow the same pattern, we can compose a generic `operation` duckling that extends the `asyncBehavior`. Ducklings can be composed by listing them in an array, the `resolve` method then populates the `app` helper property to provide access to the already resolved `app`. It also merges the `initialState` and sequences the reducers from left to right.
 
 ```javascript
 //
@@ -324,9 +241,10 @@ Noting that `create`, `update` and `remove` operations all follow the same patte
 
 import asyncBehavior from '../async-behavior';
 
-// Again we implement a factory but in this case
-// we expect the service to be specific to the
-// collection and operation to be implemented
+// Here we will use a factory method to
+// generate new duckling definitions. The `service`
+// that is passed in will determine which collection
+// and which operation is being performed
 export default function(service) {
   return [asyncBehavior, ({
     selector,
@@ -342,15 +260,23 @@ export default function(service) {
           complete: false,
           entry,
         }),
-        [complete]: (_, {error}) => error ? {} : {
-          complete: true,
+        [complete]: {
+          next: () => ({
+            complete: true,
+          }),
         },
       },
       app: {
         getEntry: selector((state) => state.entry),
         isComplete: selector((state) => state.complete),
+        // Use the `redux-thunk` middleware for the
+        // asynchronous `submit` action
         submit: (entry) => (dispatch) => {
           dispatch(start(entry));
+          // We expect the passed in `service` to implement
+          // a `submit` method that returns a promise. This
+          // promise can then be handled by the `redux-promise`
+          // middleware
           return dispatch(complete(service.submit(entry)));
         },
       },
@@ -361,55 +287,75 @@ export default function(service) {
 
 ### Combining ducklings
 
-Ducklings can be combined much like reducers, by assigning them to child paths of a parent state using an object mapping.
+Ducklings can be combined much like reducers, by assigning them to child paths of a parent state using an object mapping. However, it also wraps the selectors so that they operate on the child state and sets the action types to namespace them according to the ducks standard.
 
-In fact this does eventually combine the reducers with `redux.combineReducers` when they are resolved. However, it also wraps the selectors so that they operate on the child state and sets the action types to namespace them according to the ducks standard.
-
-For our example we have our `operation` functionality and can start combining it into a generic `collection` duckling. This will contain the `list`, the operations and the finalize operation actions.
+For our example we have our `operation` functionality and can start combining it into a generic `collection` duckling. This will also implement the list functionality.
 
 ```javascript
 //
 // ./lib/collection/index.js
 //
 
-import listFactory from './list';
+import asyncBehavior from '../async-behaviour';
 import operationFactory from './operation';
 
 // This time the service passed in to the factory
 // should contain the other services we need and
 // again should be specific to the collection
 export default function(service) {
-  return [{
-    list: listFactory(service.list),
+  return [asyncBehavior, {
     create: operationFactory(service.create),
     update: operationFactory(service.update),
     remove: operationFactory(service.remove),
   }, ({
     action,
+    selector,
     // We will use the `reduce` helper
     // to update our child states but only
     // notify a single change
     reduce,
+    app: {start, complete},
   }) => {
     const finalizeCreate = action('FINALIZE_CREATE');
     const finalizeUpdate = action('FINALIZE_UPDATE');
     const finalizeRemove = action('FINALIZE_REMOVE');
     return {
+      initialState: {
+        entries: [],
+      },
       handlers: {
-        [finalizeCreate]: (state, {payload: entry}) => reduce(state, [
-          ['create', 'reset'],
-          ['list', 'create', entry],
-        ]),
-        [finalizeUpdate]: (state, {payload: entry}) => reduce(state, [
-          ['update', 'reset'],
-          ['list', 'update', entry],
-        ]),
-        [finalizeRemove]: (state, {payload: entry}) => reduce(state, [
-          ['remove', 'reset'],
-          ['list', 'remove', entry],
-        ]),
+        [start]: () => ({
+          entries: [],
+        }),
+        [complete]: {
+          next: (_ {payload: entries}) => ({
+            entries,
+          }),
+        },
+        [finalizeCreate]: (state, {payload: entry}) => ({
+          ...reduce(state, [['create', 'reset']]),
+          entries: [
+            ...state.entries,
+            entry,
+          ],
+        }),
+        [finalizeUpdate]: (state, {payload: entry}) => ({
+          ...reduce(state, [['update', 'reset']]),
+          entries: state.entries.map(
+            (original) => entry.key === original.key ? entry : original,
+          ),
+        }),
+        [finalizeRemove]: (state, {payload: entry}) => ({
+          ...reduce(state, [['remove', 'reset']]),
+          entries: state.entries.filter((entry) => entry.key !== key),
+        }),
       },
       app: {
+        getEntries: selector((state) => state.entries),
+        fetch: () => (dispatch) => {
+          dispatch(start());
+          return dispatch(complete(service.fetch()));
+        },
         finalizeCreate,
         finalizeUpdate,
         finalizeRemove,
@@ -470,12 +416,15 @@ export const store = createStore(
 For our example the app will have the following structure to support our UI flow.
 
 ```javascript
-app.fruits.list.fetch();
-app.fruits.list.isPending(state);
-app.fruits.list.hasError(state);
-app.fruits.list.getErrorText(state);
-app.fruits.list.getEntries(state);
-app.fruits.list.reset();
+app.fruits.fetch();
+app.fruits.isPending(state);
+app.fruits.hasError(state);
+app.fruits.getErrorText(state);
+app.fruits.getEntries(state);
+app.fruits.finalizeCreate(entry);
+app.fruits.finalizeUpdate(entry);
+app.fruits.finalizeRemove(entry);
+app.fruits.reset();
 
 app.fruits.create.submit(entry);
 app.fruits.create.isPending(state);
@@ -500,11 +449,6 @@ app.fruits.remove.getErrorText(state);
 app.fruits.remove.isComplete(state);
 app.fruits.remove.getEntry(state);
 app.fruits.remove.reset();
-
-app.fruits.finalizeCreate(entry);
-app.fruits.finalizeUpdate(entry);
-app.fruits.finalizeRemove(entry);
-app.fruits.reset();
 
 // and the same for `app.vegetables`
 ```

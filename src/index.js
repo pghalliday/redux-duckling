@@ -3,7 +3,8 @@ import {
   handleActions,
 } from 'redux-actions';
 
-const RESET_ACTION = 'RESET';
+const RESET_ACTION_TYPE = 'RESET';
+const RESET_ACTION_CREATOR = 'reset';
 
 function flatten(ducklings) {
   if (ducklings instanceof Array) {
@@ -84,9 +85,10 @@ function createResetChildren(app, children) {
 // add to the beginning of a chain of ducklings
 // to define the reset action
 function resetAction({action}) {
+  const reset = action(RESET_ACTION_TYPE);
   return {
     app: {
-      reset: action(RESET_ACTION),
+      [RESET_ACTION_CREATOR]: reset,
     },
   };
 }
@@ -96,7 +98,7 @@ function resetAction({action}) {
 function createResetReducer(app, initialState, children) {
   const resetChildren = createResetChildren(app, children);
   return handleActions({
-    [app.reset]: () => ({
+    [app[RESET_ACTION_CREATOR]]: () => ({
       ...resetChildren(),
       ...initialState,
     }),
@@ -123,12 +125,10 @@ function resolveMaps(maps, namespace) {
 
 function reduceDucklings(
   ducklings,
-  namespace,
   action,
   selector,
   reduce,
   app,
-  children,
 ) {
   return ducklings.reduce(({
     app,
@@ -140,12 +140,10 @@ function reduceDucklings(
       handlers = {},
       initialState: nextInitialState = {},
     } = duckling({
-      namespace,
       action,
       selector,
       reduce,
       app,
-      children,
     });
     return {
       app: {
@@ -198,12 +196,10 @@ function resolveDucklings(
   // a list of reducer maps
   const {app, reducers, initialState} = reduceDucklings(
     [resetAction, ...ducklings],
-    namespace,
     action,
     selector,
     reduce,
     combinedApp,
-    children,
   );
   // create the list of reducers prepending the combined
   // reducer for children and the reset reducer

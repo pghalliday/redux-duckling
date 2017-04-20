@@ -95,12 +95,12 @@ const decrementerIncrementerToggle = [
 
 const namespaced = {
   deep: {
-    path: ({action, selector, namespace}) => {
+    path: ({action, selector}) => {
       const initialState = {
         test: '',
       };
       const getTest = selector((state) => state.test);
-      const setTest = action('TEST', () => namespace.join('.'));
+      const setTest = action('TEST');
       const handlers = {
         [setTest]: (state, {payload: test}) => ({
           test,
@@ -634,13 +634,13 @@ describe('redux-duckling', () => {
 
       describe('then dispatch the setTest action', () => {
         beforeEach(() => {
-          store.dispatch(app.deep.path.setTest());
+          store.dispatch(app.deep.path.setTest('test'));
           state = store.getState();
         });
 
         describe('then the state', () => {
-          it('should be \'path.deep\'', () => {
-            app.deep.path.getTest(state).should.eql('path.deep');
+          it('should be correct', () => {
+            app.deep.path.getTest(state).should.eql('test');
           });
         });
       });
