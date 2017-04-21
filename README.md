@@ -401,6 +401,9 @@ import service from './service';
 
 import collectionFactory from './lib/collection';
 
+// import the resolve function
+import resolve from 'redux-duckling';
+
 // Define 2 collections
 const duckling = {
   fruits: collectionFactory(service.fruits),
