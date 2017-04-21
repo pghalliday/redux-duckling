@@ -137,10 +137,10 @@ const container = [
         incrementAll,
       },
       handlers: {
-        [incrementAll]: (state) => reduce(state, [
-          ['incrementer1', 'increment'],
-          ['incrementer2', 'increment'],
-        ]),
+        [incrementAll]: (state) => reduce(state, {
+          incrementer1: [['increment']],
+          incrementer2: [['increment']],
+        }),
       },
     };
   },

@@ -49,8 +49,8 @@ function duckling({
   selector,
   // The `reduce` helper function can be used to apply
   // actions to child ducklings without dispatching them.
-  // It takes the state and an array of actions to apply
-  // and returns a new state
+  // It takes the state and a map of child states to actions 
+  // to apply and returns a map of changed child states
   reduce,
   // The `app` object provides access to actions and selectors
   // defined in the ducklings that this duckling extends.
@@ -333,20 +333,26 @@ export default function(service) {
           }),
         },
         [finalizeCreate]: (state, {payload: entry}) => ({
-          ...reduce(state, [['create', 'reset']]),
+          ...reduce(state, {
+            create: [['reset']],
+          }),
           entries: [
             ...state.entries,
             entry,
           ],
         }),
         [finalizeUpdate]: (state, {payload: entry}) => ({
-          ...reduce(state, [['update', 'reset']]),
+          ...reduce(state, {
+            update: [['reset']],
+          }),
           entries: state.entries.map(
             (original) => entry.key === original.key ? entry : original,
           ),
         }),
         [finalizeRemove]: (state, {payload: entry}) => ({
-          ...reduce(state, [['remove', 'reset']]),
+          ...reduce(state, {
+            remove: [['reset']],
+          }),
           entries: state.entries.filter((entry) => entry.key !== key),
         }),
       },

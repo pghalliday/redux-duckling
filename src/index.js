@@ -57,13 +57,19 @@ function createSelectorHelper(namespace) {
 }
 
 function createReduceHelper(app, children) {
-  return (state, actions) => actions.reduce((
-    state,
-    [child, action, ...args]
+  return (state, actions) => Object.keys(actions).reduce((
+    newState,
+    child,
   ) => ({
-    ...state,
-    [child]: children[child](state[child], app[child][action](...args)),
-  }), state);
+    ...newState,
+    [child]: actions[child].reduce(
+      (
+        state,
+        [action, ...args]
+      ) => children[child](state, app[child][action](...args)),
+      state[child],
+    ),
+  }), {});
 }
 
 function combineReducers(children) {
